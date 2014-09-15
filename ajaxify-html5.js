@@ -1,6 +1,6 @@
 // Ajaxify
-// v1.0.1 - 30 September, 2012
-// https://github.com/browserstate/ajaxify
+// v1.0.2 - September 2014
+// Fork of: https://github.com/browserstate/ajaxify
 (function(window,undefined){
 	
 	// Prepare our Variables
@@ -20,11 +20,13 @@
 		var
 			/* Application Specific Variables */
 			contentSelector = '#content,article:first,.article:first,.post:first',
+			extraSelector = '.ajaxify',
 			$content = $(contentSelector).filter(':first'),
 			contentNode = $content.get(0),
-			$menu = $('#menu,#nav,nav:first,.nav:first').filter(':first'),
-			activeClass = 'active selected current youarehere',
-			activeSelector = '.active,.selected,.current,.youarehere',
+			$menu = $('.menu,#menu,#nav,nav:first,.nav:first').filter(':first'),
+			activeClass = 'current_page_item current_menu_item active selected current youarehere',
+			removeClass = 'current_page_item current_menu_item current_page_parent active selected current youarehere',
+			activeSelector = '.current_page_item,.current_menu_item,.active,.selected,.current,.youarehere',
 			menuChildrenSelector = '> li,> ul > li',
 			completedEventName = 'statechangecomplete',
 			/* Application Generic Variables */
@@ -59,9 +61,10 @@
 		// HTML Helper
 		var documentHtml = function(html){
 			// Prepare
+			// <div class="document-body" class="home page page-id-2 page-template-default full-width">
 			var result = String(html)
 				.replace(/<\!DOCTYPE[^>]*>/i, '')
-				.replace(/<(html|head|body|title|meta|script)([\s\>])/gi,'<div class="document-$1"$2')
+				.replace(/<(html|head|body|title|meta|script)([^(\>|class)]?)(class="([^"]*?)")?/gi,'<div $2 class="document-$1 $4"')
 				.replace(/<\/(html|head|body|title|meta|script)\>/gi,'</div>')
 			;
 			
@@ -114,6 +117,10 @@
 			// Which prevents that annoying pop bang issue when loading in new content
 			$content.animate({opacity:0},800);
 			
+			$(extraSelector).animate({opacity:0},800);
+			
+			
+			
 			// Ajax Request the Traditional Page
 			$.ajax({
 				url: url,
@@ -123,6 +130,8 @@
 						$data = $(documentHtml(data)),
 						$dataBody = $data.find('.document-body:first'),
 						$dataContent = $dataBody.find(contentSelector).filter(':first'),
+						$dataExtras = $dataBody.find(extraSelector),
+						extraHtmls = [],
 						$menuChildren, contentHtml, $scripts;
 					
 					// Fetch the scripts
@@ -131,8 +140,18 @@
 						$scripts.detach();
 					}
 
+					
 					// Fetch the content
 					contentHtml = $dataContent.html()||$data.html();
+					
+					$dataExtras.each(function(index,element){
+						extraHtmls.push( {
+							'class' : $(this).attr('class'),
+							'id' : $(this).attr('id'),
+							'html' : $(this).html()
+						} );
+					});
+					
 					if ( !contentHtml ) {
 						document.location.href = url;
 						return false;
@@ -140,13 +159,18 @@
 					
 					// Update the menu
 					$menuChildren = $menu.find(menuChildrenSelector);
-					$menuChildren.filter(activeSelector).removeClass(activeClass);
+					$menuChildren.filter(activeSelector).removeClass(removeClass);
 					$menuChildren = $menuChildren.has('a[href^="'+relativeUrl+'"],a[href^="/'+relativeUrl+'"],a[href^="'+url+'"]');
-					if ( $menuChildren.length === 1 ) { $menuChildren.addClass(activeClass); }
+					$menuChildren.first().addClass(activeClass);
 
 					// Update the content
 					$content.stop(true,true);
-					$content.html(contentHtml).ajaxify().css('opacity',100).show(); /* you could fade in here if you'd like */
+					$content.promise().done(function(){
+						$(this)
+							.html(contentHtml)
+							.ajaxify()
+							.animate({opacity:1},800);
+					});
 
 					// Update the title
 					document.title = $data.find('.document-title:first').text();
@@ -154,6 +178,33 @@
 						document.getElementsByTagName('title')[0].innerHTML = document.title.replace('<','&lt;').replace('>','&gt;').replace(' & ',' &amp; ');
 					}
 					catch ( Exception ) { }
+					
+					for( var key in extraHtmls ) {	
+					   if (extraHtmls.hasOwnProperty(key)) {
+						 var obj = extraHtmls[key];
+						 var the_html = obj.html;
+						 var $element = $('#'+obj.id);
+						 $element
+							.promise().done(function(){
+								$(this)
+									.html(the_html)
+									.ajaxify()
+									.animate({opacity:1},800);
+							});
+					   }
+					}
+					
+					// Update the classes
+					var updating = { 'body':$dataBody, 'content':$dataContent };
+					for( var key in updating ) {
+					   if (updating.hasOwnProperty(key)) {
+						   var obj = updating[key];
+						   //console.log( 'Changing class of $(' + key + ') from "' + $(key).attr('class') + '" to "' + obj.attr('class') + '"' );
+						   $(key).removeClass();
+						   $(key).addClass( obj.attr('class') );
+						   $(key).removeClass( 'document-' + key );
+					   }
+					}
 					
 					// Add the scripts
 					$scripts.each(function(){
